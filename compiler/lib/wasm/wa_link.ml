@@ -316,7 +316,9 @@ let output_js js =
       | S { name = Utf8 x; _ } -> Var_printer.add_reserved x)
     free;
   let js =
-    if Config.Flag.shortvar () then (new Js_traverse.rename_variable ~esm:false)#program js else js
+    if Config.Flag.shortvar ()
+    then (new Js_traverse.rename_variable ~esm:false)#program js
+    else js
   in
   let js = (new Js_traverse.simpl)#program js in
   let js = (new Js_traverse.clean)#program js in
@@ -401,6 +403,7 @@ let build_runtime_arguments
                          , N )
                        ]
                        N
+                   , false
                    , AUnknown ) ))
              missing_primitives) )
       :: generated_js
@@ -435,6 +438,7 @@ let build_runtime_arguments
                ; Return_statement (Some (obj generated_js)), N
                ]
                N
+           , true
            , AUnknown ))
         [ EVar (Javascript.ident Constant.global_object_) ]
         N
