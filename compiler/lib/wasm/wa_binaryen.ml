@@ -109,9 +109,10 @@ let dead_code_elimination
   filter_unused_primitives primitives usage_file
 
 let optimization_options =
-  [| [ "-O2"; "--skip-pass=inlining-optimizing"; "--traps-never-happen" ]
-   ; [ "-O2"; "--skip-pass=inlining-optimizing"; "--traps-never-happen" ]
-   ; [ "-O3"; "--skip-pass=inlining-optimizing"; "--traps-never-happen" ]
+  [| ( [ "-O2"; "--skip-pass=inlining-optimizing"; "--traps-never-happen" ]
+     , [ "--skip-pass=coalesce-locals" ] )
+   ; [ "-O2"; "--skip-pass=inlining-optimizing"; "--traps-never-happen" ], []
+   ; [ "-O3"; "--skip-pass=inlining-optimizing"; "--traps-never-happen" ], []
   |]
 
 let optimize
@@ -126,10 +127,14 @@ let optimize
     | None -> 1
     | Some p -> fst (List.find ~f:(fun (_, p') -> Poly.equal p p') Driver.profiles)
   in
+  let optim_options =
+    let l, l' = optimization_options.(level - 1) in
+    if Config.Flag.pretty () then l @ l' else l
+  in
   command
     ("wasm-opt"
      :: (common_options ()
-        @ optimization_options.(level - 1)
+        @ optim_options
         @ [ Filename.quote input_file; "-o"; Filename.quote output_file ])
     @ opt_flag "--input-source-map" opt_input_sourcemap
     @ opt_flag "--output-source-map" opt_output_sourcemap
