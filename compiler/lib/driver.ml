@@ -90,14 +90,25 @@ let ( +> ) f g x = g (f x)
 
 let map_fst f (x, y, z) = f x, y, z
 
-let effects p =
+let effects ~deadcode_sentinal p =
   if Config.Flag.effects ()
   then (
     if debug () then Format.eprintf "Effects...@.";
-    p |> Deadcode.f +> Effects.f +> map_fst Lambda_lifting.f)
+    let p, live_vars = Deadcode.f p in
+    let p = Effects.remove_empty_blocks ~live_vars p in
+    let p, live_vars = Deadcode.f p in
+    let info = Global_flow.f ~fast:false p in
+    let p, live_vars =
+      if Config.Flag.globaldeadcode ()
+      then
+        let p = Global_deadcode.f p ~deadcode_sentinal info in
+        Deadcode.f p
+      else p, live_vars
+    in
+    p |> Effects.f ~flow_info:info ~live_vars +> map_fst Lambda_lifting.f)
   else p, (Code.Var.Set.empty : Effects.cps_calls), (Code.Var.Set.empty : Effects.in_cps)
 
-let exact_calls profile p =
+let exact_calls profile ~deadcode_sentinal p =
   if not (Config.Flag.effects ())
   then
     let fast =
@@ -106,6 +117,11 @@ let exact_calls profile p =
       | O1 | O2 -> true
     in
     let info = Global_flow.f ~fast p in
+    let p =
+      if Config.Flag.globaldeadcode () && Config.Flag.deadcode ()
+      then Global_deadcode.f p ~deadcode_sentinal info
+      else p
+    in
     Specialize.f ~function_arity:(fun f -> Global_flow.function_arity info f) p
   else p
 
@@ -179,6 +195,7 @@ let generate
     ~exported_runtime
     ~wrap_with_fun
     ~warn_on_unhandled_effect
+    ~deadcode_sentinal
     ((p, live_vars), cps_calls, _) =
   if times () then Format.eprintf "Start Generation...@.";
   let should_export = should_export wrap_with_fun in
@@ -189,6 +206,7 @@ let generate
     ~cps_calls
     ~should_export
     ~warn_on_unhandled_effect
+    ~deadcode_sentinal
     d
 
 let debug_linker = Debug.find "linker"
@@ -349,36 +367,38 @@ let link' ~export_runtime ~standalone ~link (js : Javascript.statement_list) :
       if export_runtime
       then
         let open Javascript in
-        let all = Linker.all linkinfos in
-        let all =
-          List.map all ~f:(fun name ->
-              let name = Utf8_string.of_string_exn name in
-              Property (PNI name, EVar (ident name)))
-        in
-        (if standalone
-         then
-           ( Expression_statement
-               (EBin
-                  ( Eq
-                  , dot
-                      (EVar (ident Constant.global_object_))
-                      (Utf8_string.of_string_exn "jsoo_runtime")
-                  , EObj all ))
-           , N )
-         else
-           ( Expression_statement
-               (call
-                  (dot
-                     (EVar (ident (Utf8_string.of_string_exn "Object")))
-                     (Utf8_string.of_string_exn "assign"))
-                  [ dot
-                      (EVar (ident Constant.global_object_))
-                      (Utf8_string.of_string_exn "jsoo_runtime")
-                  ; EObj all
-                  ]
-                  N)
-           , N ))
-        :: js
+        match Linker.all linkinfos with
+        | [] -> js
+        | all ->
+            let all =
+              List.map all ~f:(fun name ->
+                  let name = Utf8_string.of_string_exn name in
+                  Property (PNI name, EVar (ident name)))
+            in
+            (if standalone
+             then
+               ( Expression_statement
+                   (EBin
+                      ( Eq
+                      , dot
+                          (EVar (ident Constant.global_object_))
+                          (Utf8_string.of_string_exn "jsoo_runtime")
+                      , EObj all ))
+               , N )
+             else
+               ( Expression_statement
+                   (call
+                      (dot
+                         (EVar (ident (Utf8_string.of_string_exn "Object")))
+                         (Utf8_string.of_string_exn "assign"))
+                      [ dot
+                          (EVar (ident Constant.global_object_))
+                          (Utf8_string.of_string_exn "jsoo_runtime")
+                      ; EObj all
+                      ]
+                      N)
+               , N ))
+            :: js
       else js
     in
     let missing = Linker.missing linkinfos in
@@ -396,7 +416,7 @@ let link' ~export_runtime ~standalone ~link (js : Javascript.statement_list) :
                              List.map
                                ~f:(fun name ->
                                  let name = Utf8_string.of_string_exn name in
-                                 Prop_ident (ident name, None))
+                                 Prop_ident (Prop_and_ident (ident name), None))
                                missing
                          ; rest = None
                          }
@@ -646,7 +666,7 @@ let target_flag (type a) (t : a target) =
   | JavaScript _ -> `JavaScript
   | Wasm -> `Wasm
 
-let link_and_pack ?(standalone = true) ?(wrap_with_fun = `Iife) ~link p =
+let link_and_pack ?(standalone = true) ?(wrap_with_fun = `Iife) ?(link = `No) p =
   let export_runtime =
     match link with
     | `All | `All_from _ -> true
@@ -668,6 +688,10 @@ let full
     ~source_map
     d
     p : result =
+  let deadcode_sentinal =
+    (* If deadcode is disabled, this field is just fresh variable *)
+    Code.Var.fresh_n "undef"
+  in
   let opt =
     specialize_js_once
     +> (match profile with
@@ -675,13 +699,13 @@ let full
        | O2 -> o2
        | O3 -> o3)
          ~target:(target_flag target)
-    +> exact_calls profile
-    +> effects
+    +> exact_calls ~deadcode_sentinal profile
+    +> effects ~deadcode_sentinal
     +> map_fst
-         ((match target with
-          | JavaScript _ -> Generate_closure.f
-          | Wasm -> Fun.id)
-         +> deadcode')
+         (match target with
+         | JavaScript _ -> if Config.Flag.effects () then Fun.id else Generate_closure.f
+         | Wasm -> Fun.id)
+    +> map_fst deadcode'
   in
   if times () then Format.eprintf "Start Optimizing...@.";
   let t = Timer.make () in
@@ -691,7 +715,12 @@ let full
   | JavaScript formatter ->
       let exported_runtime = not standalone in
       let emit formatter =
-        generate d ~exported_runtime ~wrap_with_fun ~warn_on_unhandled_effect:standalone
+        generate
+          d
+          ~exported_runtime
+          ~wrap_with_fun
+          ~warn_on_unhandled_effect:standalone
+          ~deadcode_sentinal
         +> link_and_pack ~standalone ~wrap_with_fun ~link
         +> output formatter ~source_map ()
       in

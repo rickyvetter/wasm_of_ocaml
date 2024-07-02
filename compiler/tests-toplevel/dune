@@ -22,6 +22,7 @@
  (target test_toplevel.referencejs)
  (enabled_if
   (and
+   (>= %{ocaml_version} 5.2)
    (<> %{profile} wasm)
    (<> %{profile} wasm-effects)))
  (deps test_toplevel.js)
@@ -33,9 +34,7 @@
 (rule
  (alias runtest)
  (enabled_if
-  (and
-   (<> %{profile} wasm)
-   (<> %{profile} wasm-effects)))
+  (>= %{ocaml_version} 5.2))
  (deps test_toplevel.reference test_toplevel.referencejs)
  (action
   (diff test_toplevel.reference test_toplevel.referencejs)))

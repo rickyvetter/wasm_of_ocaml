@@ -417,7 +417,7 @@ end
 module Int64 = struct
   include Int64
 
-  let equal (a : int64) (b : int64) = Poly.( = ) a b
+  let equal (a : int64) (b : int64) = Poly.(a = b)
 end
 
 module Float = struct
@@ -1152,6 +1152,17 @@ end
 
 module Array = struct
   include ArrayLabels
+
+  let find_opt ~f:p a =
+    let n = length a in
+    let rec loop i =
+      if i = n
+      then None
+      else
+        let x = unsafe_get a i in
+        if p x then Some x else loop (succ i)
+    in
+    loop 0
 
   let fold_right_i a ~f ~init:x =
     let r = ref x in

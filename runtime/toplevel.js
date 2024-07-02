@@ -41,18 +41,78 @@ function caml_get_current_environment() {
 
 //Provides: caml_get_section_table
 //Requires: caml_global_data, caml_failwith
+//Requires: caml_string_of_jsbytes, caml_jsbytes_of_string
+//Requires: caml_list_of_js_array
+//Version: < 5.3
 function caml_get_section_table () {
-  if(!caml_global_data.toc) {
+  if(!caml_global_data.sections) {
     caml_failwith("Program not compiled with --toplevel");
   }
-  return caml_global_data.toc;
+  var symb = caml_global_data.sections[1];
+  var crcs = caml_global_data.sections[2];
+  var prim = caml_global_data.sections[3];
+  var dlpt = caml_global_data.sections[4];
+  function sl(l) {
+    var x = ""
+    while(l){
+      x += caml_jsbytes_of_string(l[1]);
+      x += "\0";
+      l = l[2];
+    }
+    return caml_string_of_jsbytes(x);
+  }
+  var res = caml_list_of_js_array([
+    [0, caml_string_of_jsbytes("SYMB"), symb],
+    [0, caml_string_of_jsbytes("CRCS"), crcs],
+    [0, caml_string_of_jsbytes("PRIM"), sl(prim)],
+    [0, caml_string_of_jsbytes("DLPT"), sl(dlpt)]
+  ]);
+  return res
+}
+
+//Provides: caml_dynlink_get_bytecode_sections
+//Requires: caml_global_data, caml_failwith
+//Alias: jsoo_get_bytecode_sections
+function caml_dynlink_get_bytecode_sections() {
+  if(!caml_global_data.sections) {
+    caml_failwith("Program not compiled with --toplevel");
+  }
+  return caml_global_data.sections;
 }
 
 //Provides: caml_reify_bytecode
 //Requires: caml_failwith,caml_callback
+//Requires: caml_string_of_array, caml_ba_to_typed_array
+//Version: >= 5.2
 function caml_reify_bytecode (code, debug,_digest) {
-  if(globalThis.toplevelCompile)
+  if(globalThis.toplevelCompile){
+    code=caml_string_of_array(caml_ba_to_typed_array(code));
     return [0, 0, caml_callback(globalThis.toplevelCompile, [code,debug])];
+  }
+  else caml_failwith("Toplevel not initialized (toplevelCompile)")
+}
+
+//Provides: caml_reify_bytecode
+//Requires: caml_failwith,caml_callback
+//Requires: caml_string_of_array, caml_uint8_array_of_bytes
+//Version: < 5.2
+function caml_reify_bytecode (code, debug,_digest) {
+  if(globalThis.toplevelCompile){
+    var len = 0;
+    var all = [];
+    for(var i = 1;  i < code.length; i++) {
+      var a = caml_uint8_array_of_bytes(code[i]);
+      all.push(a);
+      len += a.length;
+    }
+    code = new Uint8Array(len);
+    for(var i = 0, len = 0; i < all.length; i++){
+      code.set(all[i], len);
+      len += all[i].length;
+    }
+    code = caml_string_of_array(code);
+    return [0, 0, caml_callback(globalThis.toplevelCompile, [code,debug])];
+  }
   else caml_failwith("Toplevel not initialized (toplevelCompile)")
 }
 

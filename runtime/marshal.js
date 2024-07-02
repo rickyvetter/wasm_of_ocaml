@@ -273,8 +273,8 @@ var caml_custom_ops =
 //Provides: caml_input_value_from_reader mutable
 //Requires: caml_failwith
 //Requires: caml_float_of_bytes, caml_custom_ops
-//Requires: zstd_decompress
 //Requires: UInt8ArrayReader
+//Requires: caml_decompress_input
 function caml_input_value_from_reader(reader, ofs) {
   function readvlq(overflow) {
     var c = reader.read8u();
@@ -483,10 +483,14 @@ function caml_input_value_from_reader(reader, ofs) {
     }
   }
   if(compressed) {
-    var data = reader.readuint8array(data_len);
-    var res = new Uint8Array(uncompressed_data_len);
-    var res = zstd_decompress(data, res);
-    var reader = new UInt8ArrayReader(res, 0);
+    if(caml_decompress_input) {
+      var data = reader.readuint8array(data_len);
+      var res = new Uint8Array(uncompressed_data_len);
+      var res = caml_decompress_input(data, res);
+      var reader = new UInt8ArrayReader(res, 0);
+    } else {
+      caml_failwith("input_value: compressed object, cannot decompress");
+    }
   }
   var res = intern_rec (reader);
   while (stack.length > 0) {
@@ -730,18 +734,18 @@ var caml_output_val = function (){
       } else {
         if (v != (v|0)){
           var type_of_v = typeof v;
-          //
+          if(type_of_v != "number")
+            caml_failwith("output_value: abstract value ("+type_of_v+")");
           // If a float happens to be an integer it is serialized as an integer
           // (Js_of_ocaml cannot tell whether the type of an integer number is
           // float or integer.) This can result in unexpected crashes when
-          // unmarshalling using the standard runtime. It seems better to
-          // systematically fail on marshalling.
-          //
-          //          if(type_of_v != "number")
-          caml_failwith("output_value: abstract value ("+type_of_v+")");
-          //          var t = caml_int64_to_bytes(caml_int64_bits_of_float(v));
-          //          writer.write (8, 0x0B /*cst.CODE_DOUBLE_BIG*/);
-          //          for(var i = 0; i<8; i++){writer.write(8,t[i])}
+          // unmarshalling using the standard runtime.
+          if (memo(v)) return;
+          var t = caml_int64_to_bytes(caml_int64_bits_of_float(v));
+          writer.write (8, 0x0C /*cst.CODE_DOUBLE_LITTLE*/);
+          for(var i = 0; i<8; i++){writer.write(8,t[7 - i])}
+          writer.size_32 += 3
+          writer.size_64 += 2
         }
         else if (v >= 0 && v < 0x40) {
           writer.write (8, 0X40 /*cst.PREFIX_SMALL_INT*/ + v);

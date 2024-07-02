@@ -415,7 +415,7 @@ let link ~output ~linkall ~mklib ~toplevel ~files ~resolve_sourcemap_url ~source
           let code =
             Parse_bytecode.link_info
               ~target:`JavaScript
-              ~symtable:!sym
+              ~symbols:!sym
               ~primitives
               ~crcs:[]
           in

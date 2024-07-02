@@ -444,6 +444,14 @@ class find_variable_declaration r n =
       super#variable_declaration k v
   end
 
+let find_variable program n =
+  let r = ref [] in
+  let o = new find_variable_declaration r n in
+  ignore (o#program program);
+  match !r with
+  | [ DeclIdent (_, Some (expression, _)) ] -> expression
+  | _ -> raise Not_found
+
 let print_var_decl program n =
   let r = ref [] in
   let o = new find_variable_declaration r n in
@@ -483,6 +491,14 @@ class find_function_declaration r n =
 
 let print_program p = print_string (program_to_string p)
 
+let find_function program n =
+  let r = ref [] in
+  let o = new find_function_declaration r (Some n) in
+  ignore (o#program program);
+  match !r with
+  | [ (_, fd) ] -> fd
+  | _ -> raise Not_found
+
 let print_fun_decl program n =
   let r = ref [] in
   let o = new find_function_declaration r n in
@@ -505,6 +521,7 @@ let compile_and_run_bytecode ?unix s =
 
 let compile_and_run
     ?debug
+    ?pretty
     ?(skip_modern = false)
     ?(flags = [])
     ?effects
@@ -520,6 +537,7 @@ let compile_and_run
       in
       let output_without_stdlib_modern =
         compile_bc_to_javascript
+          ?pretty
           ~flags
           ?effects
           ?use_js_string
@@ -546,33 +564,29 @@ let compile_and_run
           print_string output_with_stdlib_modern;
           print_endline "==========================================="))
 
-let compile_and_parse_whole_program ?(debug = true) ?flags ?effects ?use_js_string ?unix s
-    =
+let compile_and_parse_whole_program
+    ?(debug = true)
+    ?pretty
+    ?flags
+    ?effects
+    ?use_js_string
+    ?unix
+    s =
   with_temp_dir ~f:(fun () ->
       s
       |> Filetype.ocaml_text_of_string
       |> Filetype.write_ocaml ~name:"test.ml"
       |> compile_ocaml_to_bc ?unix ~debug
-      |> compile_bc_to_javascript
-           ?flags
-           ?effects
-           ?use_js_string
-           ~pretty:true
-           ~sourcemap:debug
+      |> compile_bc_to_javascript ?pretty ?flags ?effects ?use_js_string ~sourcemap:debug
       |> parse_js)
 
-let compile_and_parse ?(debug = true) ?flags ?effects ?use_js_string s =
+let compile_and_parse ?(debug = true) ?pretty ?flags ?effects ?use_js_string s =
   with_temp_dir ~f:(fun () ->
       s
       |> Filetype.ocaml_text_of_string
       |> Filetype.write_ocaml ~name:"test.ml"
       |> compile_ocaml_to_cmo ~debug
-      |> compile_cmo_to_javascript
-           ?flags
-           ?effects
-           ?use_js_string
-           ~pretty:true
-           ~sourcemap:debug
+      |> compile_cmo_to_javascript ?pretty ?flags ?effects ?use_js_string ~sourcemap:debug
       |> parse_js)
 
 let normalize_path s =

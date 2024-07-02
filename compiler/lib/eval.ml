@@ -171,11 +171,11 @@ let the_length_of info x =
   get_approx
     info
     (fun x ->
-      match info.info_defs.(Var.idx x) with
-      | Expr (Constant (String s)) -> Some (Int32.of_int (String.length s))
-      | Expr (Prim (Extern "caml_create_string", [ arg ]))
-      | Expr (Prim (Extern "caml_create_bytes", [ arg ])) -> the_int info arg
-      | _ -> None)
+      match Flow.Info.def info x with
+      | Some (Constant (String s)) -> Some (Int32.of_int (String.length s))
+      | Some (Prim (Extern "caml_create_string", [ arg ]))
+      | Some (Prim (Extern "caml_create_bytes", [ arg ])) -> the_int info arg
+      | None | Some _ -> None)
     None
     (fun u v ->
       match u, v with
@@ -194,14 +194,14 @@ let is_int ~target info x =
       get_approx
         info
         (fun x ->
-          match info.info_defs.(Var.idx x) with
-          | Expr (Constant (Int (Regular, _))) -> Y
-          | Expr (Constant (Int _)) -> (
+          match Flow.Info.def info x with
+          | Some (Constant (Int (Regular, _))) -> Y
+          | Some (Constant (Int _)) -> (
               match target with
               | `JavaScript -> Y
               | `Wasm -> N)
-          | Expr (Block (_, _, _, _)) | Expr (Constant _) -> N
-          | _ -> Unknown)
+          | Some (Block (_, _, _, _) | Constant _) -> N
+          | None | Some _ -> Unknown)
         Unknown
         (fun u v ->
           match u, v with
@@ -222,11 +222,15 @@ let the_tag_of info x get =
       get_approx
         info
         (fun x ->
-          match info.info_defs.(Var.idx x) with
-          | Expr (Block (j, _, _, _)) ->
-              if Var.ISet.mem info.info_possibly_mutable x then None else get j
-          | Expr (Constant (Tuple (j, _, _))) -> get j
-          | _ -> None)
+          match Flow.Info.def info x with
+          | Some (Block (j, _, _, mut)) ->
+              if Flow.Info.possibly_mutable info x
+              then (
+                assert (Poly.(mut = Maybe_mutable));
+                None)
+              else get j
+          | Some (Constant (Tuple (j, _, _))) -> get j
+          | None | Some _ -> None)
         None
         (fun u v ->
           match u, v with
@@ -245,10 +249,10 @@ let the_cont_of info x (a : cont array) =
   get_approx
     info
     (fun x ->
-      match info.info_defs.(Var.idx x) with
-      | Expr (Prim (Extern "%direct_obj_tag", [ b ])) -> the_tag_of info b get
-      | Expr (Constant (Int (_, j))) -> get (Int32.to_int j)
-      | _ -> None)
+      match Flow.Info.def info x with
+      | Some (Prim (Extern "%direct_obj_tag", [ b ])) -> the_tag_of info b get
+      | Some (Constant (Int (_, j))) -> get (Int32.to_int j)
+      | None | Some _ -> None)
     None
     (fun u v ->
       match u, v with
@@ -266,7 +270,7 @@ let eval_instr ~target info ((x, loc) as i) =
           | Some c ->
               let c = if c then 1l else 0l in
               let c = Constant (Int (Regular, c)) in
-              Flow.update_def info x c;
+              Flow.Info.update_def info x c;
               [ Let (x, c), loc ])
       | _ -> [ i ])
   | Let (x, Prim (Extern "caml_ml_string_length", [ s ])) -> (
@@ -280,7 +284,7 @@ let eval_instr ~target info ((x, loc) as i) =
       | None -> [ i ]
       | Some c ->
           let c = Constant (Int (Regular, c)) in
-          Flow.update_def info x c;
+          Flow.Info.update_def info x c;
           [ Let (x, c), loc ])
   | Let
       ( _
@@ -303,13 +307,13 @@ let eval_instr ~target info ((x, loc) as i) =
       | (Y | N) as b ->
           let b = if Poly.(b = N) then 0l else 1l in
           let c = Constant (Int (Regular, b)) in
-          Flow.update_def info x c;
+          Flow.Info.update_def info x c;
           [ Let (x, c), loc ])
   | Let (x, Prim (Extern "%direct_obj_tag", [ y ])) -> (
       match the_tag_of info y (fun x -> Some x) with
       | Some tag ->
           let c = Constant (Int (Regular, Int32.of_int tag)) in
-          Flow.update_def info x c;
+          Flow.Info.update_def info x c;
           [ Let (x, c), loc ]
       | None -> [ i ])
   | Let (x, Prim (Extern "caml_sys_const_backend_type", [ _ ])) ->
@@ -344,7 +348,7 @@ let eval_instr ~target info ((x, loc) as i) =
       match res with
       | Some c ->
           let c = Constant c in
-          Flow.update_def info x c;
+          Flow.Info.update_def info x c;
           [ Let (x, c), loc ]
       | _ ->
           [ ( Let
@@ -374,9 +378,9 @@ let the_cond_of info x =
   get_approx
     info
     (fun x ->
-      match info.info_defs.(Var.idx x) with
-      | Expr (Constant (Int (_, 0l))) -> Zero
-      | Expr
+      match Flow.Info.def info x with
+      | Some (Constant (Int (_, 0l))) -> Zero
+      | Some
           (Constant
             ( Int _
             | Float _
@@ -385,9 +389,9 @@ let the_cond_of info x =
             | NativeString _
             | Float_array _
             | Int64 _ )) -> Non_zero
-      | Expr (Block (_, _, _, _)) -> Non_zero
-      | Expr (Field _ | Closure _ | Prim _ | Apply _ | Special _) -> Unknown
-      | Param | Phi _ -> Unknown)
+      | Some (Block (_, _, _, _)) -> Non_zero
+      | Some (Field _ | Closure _ | Prim _ | Apply _ | Special _) -> Unknown
+      | None -> Unknown)
     Unknown
     (fun u v ->
       match u, v with

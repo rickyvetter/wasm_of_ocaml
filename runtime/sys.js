@@ -277,7 +277,7 @@ function caml_sys_const_backend_type () {
 //Provides: os_type
 var os_type = (globalThis.process &&
                globalThis.process.platform &&
-               globalThis.process.platform == "win32") ? "Cygwin" : "Unix";
+               globalThis.process.platform == "win32") ? "Win32" : "Unix";
 
 
 //Provides: caml_sys_get_config const
@@ -343,6 +343,11 @@ function caml_spacetime_only_works_for_native_code() {
   caml_failwith("Spacetime profiling only works for native code");
 }
 
+//Provides: caml_xdg_defaults
+//Version: >= 5.2
+function caml_xdg_defaults(_unit) {
+  return 0; // empty list
+}
 
 //Provides: caml_sys_is_regular_file
 //Requires: resolve_fs_device
@@ -369,3 +374,5 @@ function caml_setup_uncaught_exception_handler() {
   }
 }
 caml_setup_uncaught_exception_handler();
+
+

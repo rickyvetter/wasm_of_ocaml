@@ -94,7 +94,7 @@ val predefined_exceptions : target:[ `JavaScript | `Wasm ] -> Code.program * Uni
 
 val link_info :
      target:[ `JavaScript | `Wasm ]
-  -> symtable:Ocaml_compiler.Symtable.GlobalMap.t
+  -> symbols:Ocaml_compiler.Symtable.GlobalMap.t
   -> primitives:string list
   -> crcs:(string * Digest.t option) list
   -> Code.program

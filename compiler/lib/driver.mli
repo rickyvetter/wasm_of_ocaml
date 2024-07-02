@@ -57,7 +57,7 @@ val from_string :
 val link_and_pack :
      ?standalone:bool
   -> ?wrap_with_fun:[ `Iife | `Anonymous | `Named of string ]
-  -> link:[ `All | `All_from of string list | `Needed | `No ]
+  -> ?link:[ `All | `All_from of string list | `Needed | `No ]
   -> Javascript.statement_list
   -> Javascript.statement_list
 
