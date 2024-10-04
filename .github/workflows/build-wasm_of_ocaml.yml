@@ -182,7 +182,8 @@ jobs:
       - name: Checkout Jane Street packages
         run: |
           opam exec -- ocamlmktop -o ocamlunix -custom unix.cma
-          opam exec -- ocamlunix wasm_of_ocaml/tools/ci_setup.ml
+          opam exec -- ./ocamlunix wasm_of_ocaml/tools/ci_setup.ml
+        shell: bash
 
       - name: Update test dependencies
         run: opam install num cohttp-lwt-unix ppx_expect cstruct
