@@ -181,7 +181,7 @@ jobs:
 
       - name: Checkout Jane Street packages
         run: |
-          opam exec -- ocamlmktop -o ocamlunix --custom unix.cma
+          opam exec -- ocamlmktop -o ocamlunix -custom unix.cma
           opam exec -- ocamlunix wasm_of_ocaml/tools/ci_setup.ml
 
       - name: Update test dependencies
