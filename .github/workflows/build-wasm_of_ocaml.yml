@@ -21,8 +21,8 @@ jobs:
 #          - 5.01.x
 #          - 5.02.x
         include:
-          - os: macos-latest
-            ocaml-compiler: 5.02.x
+#          - os: macos-latest
+#            ocaml-compiler: 5.02.x
           - os: windows-latest
             ocaml-compiler: 4.14.x
 #          - os: windows-latest
@@ -180,7 +180,9 @@ jobs:
         run: opam install opam-format ocamlfind dune graphics
 
       - name: Checkout Jane Street packages
-        run: opam exec -- ocaml wasm_of_ocaml/tools/ci_setup.ml
+        run: |
+          opam exec -- ocamlmktop -o ocamlunix --custom unix.cma
+          opam exec -- ocamlunix wasm_of_ocaml/tools/ci_setup.ml
 
       - name: Update test dependencies
         run: opam install num cohttp-lwt-unix ppx_expect cstruct
