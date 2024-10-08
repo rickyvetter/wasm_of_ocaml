@@ -109,6 +109,16 @@ jobs:
       - name: Pin dune
         run: |
           opam pin add dune.3.17 https://github.com/ocaml-wasm/dune.git#wasm_of_ocaml
+      - name: Install binaryen
+        uses: jaxxstorm/action-install-gh-release@v1.10.0
+        with:
+          repo: WebAssembly/binaryen
+          tag: version_119
+          binaries-location: binaryen-version_119/bin
+
+      - name: Pin faked binaryen-bin package
+        working-directory: ./binaryen
+        run: opam install --fake binaryen-bin
 
       - run: opam install conf-pkg-config
         if: runner.os == 'Windows'
